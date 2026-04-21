@@ -1,4 +1,6 @@
 import os
+import sys
+import signal
 import random
 import time
 import cv2
@@ -11,7 +13,7 @@ from PIL import Image as PILImage, ImageOps
 from PIL.ExifTags import TAGS, GPSTAGS
 
 # Configuration
-TIMER_DELAY = 5000  # ms for images
+TIMER_DELAY = 10000  # ms for images
 GEOLOCATOR = Nominatim(user_agent="shuffle_slideshow_tool_v15", timeout=10)
 GEO_CACHE = {}
 
@@ -19,16 +21,22 @@ GEO_CACHE = {}
 if os.environ.get('XDG_SESSION_TYPE') == 'wayland':
     os.environ['QT_QPA_PLATFORM'] = 'xcb'
 
+def cleanup_and_exit():
+    cv2.destroyAllWindows()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, lambda sig, frame: cleanup_and_exit())
+
 def format_date_str(date_input):
     if not date_input: return "Unknown Date"
     try:
         dt = datetime.strptime(str(date_input).split()[0], '%Y:%m:%d')
         return dt.strftime('%d.%m.%Y')
-    except:
+    except (ValueError, IndexError):
         try:
             dt = datetime.strptime(str(date_input).split()[0], '%Y-%m-%d')
             return dt.strftime('%d.%m.%Y')
-        except:
+        except (ValueError, IndexError):
             return str(date_input)
 
 def get_geocoded_address(lat, lon):
@@ -44,15 +52,16 @@ def get_geocoded_address(lat, lon):
             result = f"{city}, {country}"
             GEO_CACHE[coords] = result
             return result
-    except: pass
+    except Exception: pass
     return f"{lat:.4f}, {lon:.4f}"
 
 def get_decimal_from_dms(dms, ref):
     if not dms: return None
     try:
         val = float(dms[0]) + float(dms[1])/60.0 + float(dms[2])/3600.0
-        return -val if ref in ['S', 'W'] else val
-    except: return None
+        if ref and ref in ['S', 'W']: val = -val
+        return val
+    except (TypeError, ValueError, IndexError): return None
 
 def get_gps_from_pillow(path):
     try:
@@ -63,13 +72,13 @@ def get_gps_from_pillow(path):
             if "GPSLatitude" in gps:
                 return get_decimal_from_dms(gps["GPSLatitude"], gps.get("GPSLatitudeRef", "N")), \
                        get_decimal_from_dms(gps["GPSLongitude"], gps.get("GPSLongitudeRef", "E"))
-    except: pass
+    except Exception: pass
     return None, None
 
 def get_image_metadata(path):
     raw_date = None
     try: raw_date = datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d')
-    except: pass
+    except (OSError, ValueError): pass
     lat, lon = None, None
     try:
         with open(path, 'rb') as f:
@@ -79,7 +88,7 @@ def get_image_metadata(path):
                 if hasattr(img, 'gps_latitude'):
                     lat = get_decimal_from_dms(img.gps_latitude, img.gps_latitude_ref)
                     lon = get_decimal_from_dms(img.gps_longitude, img.gps_longitude_ref)
-    except: pass
+    except Exception: pass
     if lat is None: lat, lon = get_gps_from_pillow(path)
     return {
         "date": format_date_str(raw_date),
@@ -165,11 +174,12 @@ class Slideshow:
     def handle_keys(self, key):
         if key == -1 or key == 255: return False
         key = key & 0xFF
-        if key == 27: os._exit(0)
+        if key == 27: cleanup_and_exit()
         if key == 32: self.paused = not self.paused; return False
         if key == ord('f'): self.toggle_fullscreen(); return False
-        if key in [ord('d'), ord('n'), 83, 3]: self.next_item = True; return True
-        if key in [ord('a'), ord('p'), 81, 2]: self.prev_item = True; return True
+        # 83/81 = Right/Left arrow (X11 specific)
+        if key in [ord('d'), ord('n'), 83]: self.next_item = True; return True
+        if key in [ord('a'), ord('p'), 81]: self.prev_item = True; return True
         return False
 
     def play(self):
@@ -189,7 +199,7 @@ class Slideshow:
                 pil_img = ImageOps.exif_transpose(pil_img)
                 # High quality resizing to 1080p using PIL
                 img = resize_and_pad_pil(pil_img)
-        except: return
+        except Exception: return
 
         meta = get_image_metadata(path)
         overlay_text(img, [meta["date"], meta["place"]])
@@ -210,29 +220,39 @@ class Slideshow:
             return
 
         fps = cap.get(cv2.CAP_PROP_FPS)
-        wait_ms = max(1, int(1000 / fps)) if fps > 0 else 30
+        frame_time_ms = 1000.0 / fps if fps > 0 else 33.3
         
         mod_date = "Unknown Date"
         try:
             mod_date = format_date_str(datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d'))
-        except: pass
+        except (OSError, ValueError): pass
         
         last_frame_with_overlay = None
+        prev_timestamp = 0
         
         while cap.isOpened():
             if not self.paused:
+                t_start = time.time()
                 ret, frame = cap.read()
                 if not ret: break
                 
-                # High quality resizing to 1080p
                 frame = resize_and_pad(frame)
-                
                 overlay_text(frame, [mod_date, "Video"])
                 cv2.imshow(self.window_name, frame)
                 last_frame_with_overlay = frame
+                
+                # Use video timestamp if available, otherwise fall back to FPS
+                curr_timestamp = cap.get(cv2.CAP_PROP_POS_MSEC)
+                if curr_timestamp > 0 and prev_timestamp > 0:
+                    wait_ms = max(1, int(curr_timestamp - prev_timestamp))
+                else:
+                    elapsed_ms = (time.time() - t_start) * 1000
+                    wait_ms = max(1, int(frame_time_ms - elapsed_ms))
+                prev_timestamp = curr_timestamp
             else:
                 if last_frame_with_overlay is not None:
                     cv2.imshow(self.window_name, last_frame_with_overlay)
+                wait_ms = 30
             
             key = cv2.waitKey(wait_ms)
             if self.handle_keys(key) or self.next_item or self.prev_item: break
@@ -246,16 +266,12 @@ if __name__ == "__main__":
     all_files = [os.path.join(search_dir, f) for f in os.listdir(search_dir) if f.lower().endswith(('.jpg', '.jpeg', '.mp4'))]
     
     files = []
+    seen = set()
     for f in all_files:
-        if os.path.exists(f):
-            files.append(f)
-        elif os.path.islink(f):
-            # Special case for broken symlinks pointing to /home/antonk on this live system
-            target = os.readlink(f)
-            if target.startswith('/home/antonk/'):
-                fixed_target = target.replace('/home/antonk/', '/mnt/ssd/@home/antonk/', 1)
-                if os.path.exists(fixed_target):
-                    files.append(fixed_target)
+        resolved = os.path.realpath(f)
+        if os.path.exists(resolved) and resolved not in seen:
+            seen.add(resolved)
+            files.append(resolved)
 
     if not files: print("No files found.")
     else:
