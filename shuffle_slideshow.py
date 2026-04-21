@@ -151,7 +151,7 @@ class Slideshow:
         self.files = files
         self.index = 0
         self.paused = False
-        self.use_mpv = HAS_MPV
+        self.use_mpv = False
         self.window_name = "Shuffle Slideshow"
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL | cv2.WINDOW_GUI_NORMAL)
         cv2.setWindowProperty(self.window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
