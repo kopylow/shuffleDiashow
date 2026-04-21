@@ -219,6 +219,8 @@ class Slideshow:
         except Exception:
             pass
         cv2.setWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE, 1)
+        # Flush queued key events
+        while cv2.waitKey(1) != -1: pass
 
     def _show_video_opencv(self, path):
         cap = cv2.VideoCapture(path)
