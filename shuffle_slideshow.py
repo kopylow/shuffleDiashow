@@ -100,8 +100,8 @@ def get_image_metadata(path):
 
 def overlay_text(img, text_lines):
     h, w = img.shape[:2]
-    # Scale relative to 1080p reference
-    scale = h / 1080.0
+    # Scale relative to 1080p reference, using shorter side
+    scale = min(w, h) / 1080.0
     font_scale = 1.2 * scale
     thickness = max(1, int(2 * scale))
     margin_x = int(50 * scale)
