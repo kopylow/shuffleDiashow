@@ -151,6 +151,7 @@ class Slideshow:
         self.files = files
         self.index = 0
         self.paused = False
+        self.use_mpv = HAS_MPV
         self.window_name = "Shuffle Slideshow"
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL | cv2.WINDOW_GUI_NORMAL)
         cv2.setWindowProperty(self.window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -172,6 +173,11 @@ class Slideshow:
         key = key & 0xFF
         if key == 27: cleanup_and_exit()
         if key == 32: self.paused = not self.paused; return False
+        if key == ord('m') and HAS_MPV:
+            self.use_mpv = not self.use_mpv
+            mode = "mpv" if self.use_mpv else "OpenCV"
+            print(f"Video mode: {mode}")
+            return False
         # 83/81 = Right/Left arrow (X11 specific)
         if key in [ord('d'), ord('n'), 83]: self.next_item = True; return True
         if key in [ord('a'), ord('p'), 81]: self.prev_item = True; return True
@@ -207,7 +213,7 @@ class Slideshow:
             else: start_time = time.time()
 
     def show_video(self, path):
-        if HAS_MPV:
+        if self.use_mpv:
             self._show_video_mpv(path)
         else:
             self._show_video_opencv(path)
