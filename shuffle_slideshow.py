@@ -215,7 +215,7 @@ class Slideshow:
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
         cv2.setWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE, 0)
         try:
-            subprocess.run(['mpv', '--fs', '--no-terminal', '--really-quiet', path], check=False)
+            subprocess.run(['mpv', '--fs', '--hwdec=auto', '--profile=fast', '--no-terminal', '--really-quiet', path], check=False)
         except Exception:
             pass
         cv2.setWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE, 1)
