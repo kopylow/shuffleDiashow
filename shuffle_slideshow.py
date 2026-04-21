@@ -100,17 +100,19 @@ def get_image_metadata(path):
 
 def overlay_text(img, text_lines):
     h, w = img.shape[:2]
-    # Font settings optimized for 1080p
-    font_scale = 1.2
-    thickness = 2
-    margin_x, margin_y = 50, 60
-    line_spacing = 50
+    # Scale relative to 1080p reference
+    scale = h / 1080.0
+    font_scale = 1.2 * scale
+    thickness = max(1, int(2 * scale))
+    margin_x = int(50 * scale)
+    margin_y = int(60 * scale)
+    line_spacing = int(50 * scale)
     
     font = cv2.FONT_HERSHEY_SIMPLEX
     y = h - margin_y
     for line in reversed([l for l in text_lines if l]):
         # Shadow/Outline
-        cv2.putText(img, str(line), (margin_x + 2, y + 2), font, font_scale, (0,0,0), thickness + 2, cv2.LINE_AA)
+        cv2.putText(img, str(line), (margin_x + int(2 * scale), y + int(2 * scale)), font, font_scale, (0,0,0), thickness + 2, cv2.LINE_AA)
         # Main text
         cv2.putText(img, str(line), (margin_x, y), font, font_scale, (255,255,255), thickness, cv2.LINE_AA)
         y -= line_spacing
