@@ -149,25 +149,16 @@ class Slideshow:
         self.files = files
         self.index = 0
         self.paused = False
-        self.fullscreen = False
         self.window_name = "Shuffle Slideshow"
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL | cv2.WINDOW_GUI_NORMAL)
+        cv2.setWindowProperty(self.window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.setMouseCallback(self.window_name, self.on_mouse)
         self.next_item = False
         self.prev_item = False
 
-    def toggle_fullscreen(self):
-        self.fullscreen = not self.fullscreen
-        prop = cv2.WINDOW_FULLSCREEN if self.fullscreen else cv2.WINDOW_NORMAL
-        cv2.setWindowProperty(self.window_name, cv2.WND_PROP_FULLSCREEN, prop)
-
     def on_mouse(self, event, x, y, flags, param):
-        if event == cv2.EVENT_LBUTTONDBLCLK:
-            self.toggle_fullscreen()
-        elif event == cv2.EVENT_LBUTTONDOWN:
-            rect = cv2.getWindowImageRect(self.window_name)
-            win_w = rect[2] if rect and rect[2] > 0 else 800
-            if x < win_w // 2: self.prev_item = True
+        if event == cv2.EVENT_LBUTTONDOWN:
+            if x < 960: self.prev_item = True
             else: self.next_item = True
         elif event == cv2.EVENT_MBUTTONDOWN:
             self.paused = not self.paused
@@ -179,7 +170,6 @@ class Slideshow:
         key = key & 0xFF
         if key == 27: cleanup_and_exit()
         if key == 32: self.paused = not self.paused; return False
-        if key == ord('f'): self.toggle_fullscreen(); return False
         # 83/81 = Right/Left arrow (X11 specific)
         if key in [ord('d'), ord('n'), 83]: self.next_item = True; return True
         if key in [ord('a'), ord('p'), 81]: self.prev_item = True; return True
@@ -198,10 +188,8 @@ class Slideshow:
     def show_image(self, path):
         try:
             with PILImage.open(path) as pil_img:
-                # Apply EXIF Orientation flag
                 pil_img = ImageOps.exif_transpose(pil_img)
-                # High quality resizing to 1080p using PIL
-                img = resize_and_pad_pil(pil_img)
+                img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
         except Exception: return
 
         meta = get_image_metadata(path)
@@ -255,7 +243,6 @@ class Slideshow:
                 ret, frame = cap.read()
                 if not ret: break
                 
-                frame = resize_and_pad(frame)
                 overlay_text(frame, [mod_date, "Video"])
                 cv2.imshow(self.window_name, frame)
                 last_frame_with_overlay = frame
