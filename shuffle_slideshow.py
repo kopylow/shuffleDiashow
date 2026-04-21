@@ -1,6 +1,8 @@
 import os
 import sys
 import signal
+import shutil
+import subprocess
 import random
 import time
 import cv2
@@ -16,6 +18,7 @@ from PIL.ExifTags import TAGS, GPSTAGS
 TIMER_DELAY = 10000  # ms for images
 GEOLOCATOR = Nominatim(user_agent="shuffle_slideshow_tool_v15", timeout=10)
 GEO_CACHE = {}
+HAS_MPV = shutil.which('mpv') is not None
 
 # Force X11 for OpenCV/Qt if on Linux
 if os.environ.get('XDG_SESSION_TYPE') == 'wayland':
@@ -214,6 +217,22 @@ class Slideshow:
             else: start_time = time.time()
 
     def show_video(self, path):
+        if HAS_MPV:
+            self._show_video_mpv(path)
+        else:
+            self._show_video_opencv(path)
+
+    def _show_video_mpv(self, path):
+        # Hide OpenCV window while mpv plays
+        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+        cv2.setWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE, 0)
+        try:
+            subprocess.run(['mpv', '--fs', '--no-terminal', '--really-quiet', path], check=False)
+        except Exception:
+            pass
+        cv2.setWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE, 1)
+
+    def _show_video_opencv(self, path):
         cap = cv2.VideoCapture(path)
         if not cap.isOpened():
             print(f"Error opening video: {path}")
